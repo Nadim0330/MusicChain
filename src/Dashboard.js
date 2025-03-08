@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import axios from "axios";
+import { ethers } from "ethers";
+import { getContract } from "./utils/contract"; // ✅ Correct import
+
 
 const PINATA_API_KEY = "63e2ac6cff8552b8e639";
 const PINATA_SECRET_KEY = "33a4467dc5d630d409da18b1ad0d7adb49a6b4ba42e66e749c1e4f5ce8b3ac11";
@@ -79,9 +82,21 @@ const FileName = styled.p`
   color: #ddd;
 `;
 
+const TextInput = styled.input`
+  padding: 10px;
+  width: 80%;
+  border-radius: 8px;
+  border: none;
+  font-size: 16px;
+  background: #333;
+  color: white;
+`;
+
 export default function Dashboard() {
   const [walletAddress, setWalletAddress] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
+  const [title, setTitle] = useState("");
+  const [caption, setCaption] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -104,37 +119,87 @@ export default function Dashboard() {
       alert("Please select a valid MP3 file.");
     }
   }
-  
-  async function handleUpload(selectedFile) {
-    if (!selectedFile) {
-      alert("No file selected!");
-      return;
+
+  async function uploadToPinata() {
+    const contract = await getContract(); // Add await here
+
+    if (!contract) {
+        alert("Wallet not connected!");
+        return;
     }
-  
+    console.log("Contract instance:", contract);
+    console.log("Available functions:", Object.keys(contract));
+
+
+    if (!selectedFile || !title || !caption) {
+        alert("Please fill all fields before uploading!");
+        return;
+    }
+
     try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-  
-      const response = await axios.post(
-        "https://api.pinata.cloud/pinning/pinFileToIPFS",
-        formData,
-        {
-          headers: {
-            pinata_api_key: PINATA_API_KEY,
-            pinata_secret_api_key: PINATA_SECRET_KEY,
-          },
+        const formData = new FormData();
+        const mp3FileName = `${title}.mp3`;  
+        formData.append("file", selectedFile);
+
+        const fileMetadata = JSON.stringify({ name: mp3FileName });
+        formData.append("pinataMetadata", fileMetadata);
+
+        // 🔹 Upload MP3 to Pinata
+        const fileResponse = await axios.post(
+            "https://api.pinata.cloud/pinning/pinFileToIPFS",
+            formData,
+            {
+                headers: {
+                    pinata_api_key: PINATA_API_KEY,
+                    pinata_secret_api_key: PINATA_SECRET_KEY,
+                },
+            }
+        );
+
+        const fileIpfsUrl = `https://gateway.pinata.cloud/ipfs/${fileResponse.data.IpfsHash}`;
+
+        // 🔹 Upload JSON metadata
+        const jsonMetadata = {
+            pinataMetadata: { name: `${title}.json` },
+            pinataContent: {
+                title: title,
+                caption: caption,
+                musicFile: fileIpfsUrl,
+                owner: walletAddress,
+            },
+        };
+
+        const jsonResponse = await axios.post(
+            "https://api.pinata.cloud/pinning/pinJSONToIPFS",
+            jsonMetadata,
+            {
+                headers: {
+                    pinata_api_key: PINATA_API_KEY,
+                    pinata_secret_api_key: PINATA_SECRET_KEY,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
+
+        const metadataHash = jsonResponse.data.IpfsHash;
+        console.log("Metadata Hash:", metadataHash); // ✅ Check if it's valid
+
+        alert("Upload successful! Now uploading to blockchain...");
+
+        // 🔹 Upload to Blockchain
+        try {
+            const tx = await contract.uploadSong(title, caption, metadataHash);
+            await tx.wait();
+            alert("Song uploaded to blockchain!");
+        } catch (error) {
+            console.error("Blockchain upload failed:", error);
+            alert("Failed to upload song on blockchain. Check console for details.");
         }
-      );
-  
-      console.log("Uploaded to IPFS:", `https://gateway.pinata.cloud/ipfs/${response.data.IpfsHash}`);
-      alert("Music uploaded successfully! IPFS URL: " + `https://gateway.pinata.cloud/ipfs/${response.data.IpfsHash}`);
     } catch (error) {
-      console.error("Upload failed:", error);
-      alert("Upload failed. Please try again.");
+        console.error("Pinata upload failed:", error);
+        alert("Upload to Pinata failed. Please try again.");
     }
-  }
-  
-  
+}
 
   return (
     <Container>
@@ -142,15 +207,29 @@ export default function Dashboard() {
         {walletAddress && <UserID>{walletAddress}</UserID>}
         <Button danger onClick={disconnectWallet}>Disconnect</Button>
       </TopBar>
-      
+
       <h1>🎵 Dashboard</h1>
 
       <UploadContainer>
         <Input type="file" id="fileInput" accept="audio/mpeg" onChange={handleFileChange} />
         <Label htmlFor="fileInput">Choose MP3 File</Label>
         {selectedFile && <FileName>📁 {selectedFile.name}</FileName>}
-        <Button onClick={() => handleUpload(selectedFile)}>Upload</Button>
 
+        <TextInput
+          type="text"
+          placeholder="Enter title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+
+        <TextInput
+          type="text"
+          placeholder="Enter caption"
+          value={caption}
+          onChange={(e) => setCaption(e.target.value)}
+        />
+
+        <Button onClick={uploadToPinata}>Upload</Button>
       </UploadContainer>
     </Container>
   );

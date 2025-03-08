@@ -1,0 +1,4 @@
+npx hardhat run scripts/deploy.js --network sepolia
+ethers.provider.getBalance("0x3EC33fC185a0A5AB599C15d6ca545c4cB348D1C3").then(balance => console.log(balance.toString()));
+npx hardhat run scripts/deploy.js --network sepolia
+(await ethers.provider.getBalance("0x3EC33fC185a0A5AB599C15d6ca545c4cB348D1C3")).toString()

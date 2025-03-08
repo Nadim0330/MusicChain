@@ -44,23 +44,41 @@ export default function ConnectWallet() {
 
   async function connectWallet() {
     try {
-      if (window.ethereum) {
-        await window.ethereum.request({ method: "wallet_requestPermissions", params: [{ eth_accounts: {} }] });
+      if (!window.ethereum) {
+        alert("MetaMask not detected!");
+        return;
       }
-      
+  
+      // Force MetaMask to manually ask for permission
+      await window.ethereum.request({
+        method: "wallet_requestPermissions",
+        params: [{ eth_accounts: {} }],
+      });
+  
       const provider = await web3Modal.connect();
       const ethersProvider = new ethers.BrowserProvider(provider);
       const signer = await ethersProvider.getSigner();
       const address = await signer.getAddress();
-      
+  
+      // Check and switch to Sepolia
+      const network = await ethersProvider.getNetwork();
+      if (network.chainId !== 11155111n) { // Sepolia Chain ID
+        await window.ethereum.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: "0xAA36A7" }], // Sepolia in hex
+        });
+        alert("Switched to Sepolia, please reconnect.");
+        return;
+      }
+  
       setWalletAddress(address);
       localStorage.setItem("walletAddress", address);
-      
       navigate("/dashboard");
     } catch (error) {
       console.error("Wallet connection failed:", error);
     }
   }
+  
 
   async function disconnectWallet() {
     localStorage.removeItem("walletAddress");
