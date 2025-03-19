@@ -186,12 +186,12 @@ function generateCertificate(song, txHash, timestamp) {
 
   const certificateDiv = document.createElement("div");
   certificateDiv.innerHTML = `
-    <div style="width: 800px; margin: 0 auto; padding: 40px; border: 10px solid #ff9900; border-radius: 20px; font-family: 'Georgia', serif; background-color: #fdfaf6; color: #333; text-align: center;">
-      <h1 style="font-size: 32px; margin-bottom: 10px;">Certificate of Ownership</h1>
-      <p style="font-size: 18px; margin-bottom: 30px;">
+    <div style="width: 100%; max-width: 600px; margin: 0 auto; padding: 30px; border: 8px solid #ff9900; border-radius: 15px; font-family: 'Georgia', serif; background-color: #fdfaf6; color: #333; text-align: center;">
+      <h1 style="font-size: 28px; margin-bottom: 10px;">Certificate of Ownership</h1>
+      <p style="font-size: 16px; margin-bottom: 25px;">
         This certifies that the following song has been successfully uploaded to the blockchain.
       </p>
-      <div style="text-align: left; margin: 0 auto; width: 90%; font-size: 16px;">
+      <div style="text-align: left; margin: 0 auto; width: 90%; font-size: 14px; line-height: 1.6;">
         <p><strong>Title:</strong> ${song.title}</p>
         <p><strong>Caption:</strong> ${song.caption}</p>
         <p><strong>Music File:</strong> <a href="${song.musicUrl}" target="_blank">${song.musicUrl}</a></p>
@@ -199,7 +199,7 @@ function generateCertificate(song, txHash, timestamp) {
         <p><strong>Transaction Hash:</strong> ${txHash}</p>
         <p><strong>Timestamp:</strong> ${formattedTime}</p>
       </div>
-      <p style="margin-top: 40px; font-style: italic; font-size: 14px;">
+      <p style="margin-top: 30px; font-style: italic; font-size: 12px;">
         Verified on blockchain. Ownership officially recorded.
       </p>
     </div>
@@ -208,10 +208,11 @@ function generateCertificate(song, txHash, timestamp) {
   document.body.appendChild(certificateDiv);
 
   html2pdf().set({
-    margin: 1,
+    margin: [0.5, 0.5, 0.5, 0.5],  // Top, Left, Bottom, Right margins in inches
     filename: `${song.title}_Certificate.pdf`,
     html2canvas: { scale: 2 },
     jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
+    pagebreak: { mode: ['avoid-all'] },
   }).from(certificateDiv).save().then(() => {
     certificateDiv.remove();
   });
