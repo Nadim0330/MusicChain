@@ -9,6 +9,8 @@
     "@testing-library/user-event": "^13.5.0",
     "axios": "^1.8.1",
     "ethers": "^6.13.5",
+    "html2pdf.js": "^0.10.3",
+    "jspdf": "^3.0.1",
     "nft.storage": "^7.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

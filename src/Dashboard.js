@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import axios from "axios";
 import { ethers } from "ethers";
+import html2pdf from "html2pdf.js";
 import { getContract } from "./utils/contract"; // ✅ Correct import
 
 
@@ -90,7 +91,76 @@ const TextInput = styled.input`
   font-size: 16px;
   background: #333;
   color: white;
+`;const MainContent = styled.div`
+display: flex;
+width: 90%;
+height: 80vh;
+gap: 20px;
 `;
+
+const Feed = styled.div`
+flex: 7;
+background: #1a1a1a;
+padding: 20px;
+border-radius: 12px;
+overflow-y: auto;
+`;
+
+const UserPanel = styled.div`
+flex: 3;
+background: #222;
+padding: 20px;
+border-radius: 12px;
+display: flex;
+flex-direction: column;
+align-items: center;
+`;
+
+const SongCard = styled.div`
+display: flex;
+align-items: center;
+justify-content: space-between;
+background: #292929;
+padding: 10px 15px;
+margin-bottom: 10px;
+border-radius: 10px;
+width: 90%;
+min-height: 30px;
+transition: 0.3s;
+box-shadow: 2px 2px 10px rgba(255, 255, 255, 0.1);
+
+&:hover {
+  background: #333;
+}
+`;
+
+const SongInfo = styled.div`
+display: flex;
+flex-direction: column;
+gap: 3px;
+color: #fff;
+font-size: 14px;
+`;
+
+const Controls = styled.div`
+display: flex;
+align-items: center;
+gap: 10px;
+`;
+
+const LikeButton = styled.button`
+background: none;
+border: none;
+color: #ff9900;
+font-size: 16px;
+cursor: pointer;
+transition: 0.3s;
+
+&:hover {
+  color: #e68a00;
+}
+`;
+
 
 export default function Dashboard() {
   const [walletAddress, setWalletAddress] = useState("");
@@ -98,7 +168,112 @@ export default function Dashboard() {
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
   const navigate = useNavigate();
+//fetch songs
+const [songs, setSongs] = useState([]);
+const [musicUrls, setMusicUrls] = useState({}); // 🔸 Track each song's MP3 URL
 
+async function getMusicFileUrl(ipfsHash) {
+  try {
+    const res = await axios.get(`https://gateway.pinata.cloud/ipfs/${ipfsHash}`);
+    return res.data.musicFile;  // ✅ Extract MP3 URL from JSON
+  } catch (error) {
+    console.error("Error fetching music file URL:", error);
+    return null;
+  }
+}
+function generateCertificate(song, txHash, timestamp) {
+  const formattedTime = new Date(timestamp).toLocaleString();
+
+  const certificateDiv = document.createElement("div");
+  certificateDiv.innerHTML = `
+    <div style="width: 800px; margin: 0 auto; padding: 40px; border: 10px solid #ff9900; border-radius: 20px; font-family: 'Georgia', serif; background-color: #fdfaf6; color: #333; text-align: center;">
+      <h1 style="font-size: 32px; margin-bottom: 10px;">Certificate of Ownership</h1>
+      <p style="font-size: 18px; margin-bottom: 30px;">
+        This certifies that the following song has been successfully uploaded to the blockchain.
+      </p>
+      <div style="text-align: left; margin: 0 auto; width: 90%; font-size: 16px;">
+        <p><strong>Title:</strong> ${song.title}</p>
+        <p><strong>Caption:</strong> ${song.caption}</p>
+        <p><strong>Music File:</strong> <a href="${song.musicUrl}" target="_blank">${song.musicUrl}</a></p>
+        <p><strong>Owner Wallet:</strong> ${song.owner}</p>
+        <p><strong>Transaction Hash:</strong> ${txHash}</p>
+        <p><strong>Timestamp:</strong> ${formattedTime}</p>
+      </div>
+      <p style="margin-top: 40px; font-style: italic; font-size: 14px;">
+        Verified on blockchain. Ownership officially recorded.
+      </p>
+    </div>
+  `;
+
+  document.body.appendChild(certificateDiv);
+
+  html2pdf().set({
+    margin: 1,
+    filename: `${song.title}_Certificate.pdf`,
+    html2canvas: { scale: 2 },
+    jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
+  }).from(certificateDiv).save().then(() => {
+    certificateDiv.remove();
+  });
+}
+
+useEffect(() => {
+  async function fetchAllMusicUrls() {
+    const urls = {};
+    for (const song of songs) {
+      const url = await getMusicFileUrl(song.ipfsHash);
+      urls[song.id] = url;  // 🎯 Map song ID to its MP3 URL
+    }
+    setMusicUrls(urls);
+  }
+
+  if (songs.length > 0) fetchAllMusicUrls();
+}, [songs]);
+
+useEffect(() => {
+  async function fetchSongs() {
+    try {
+      const contract = await getContract();
+      if (!contract) return alert("Wallet not connected!");
+
+      const fetchedSongs = await contract.getAllSongs();
+      const formattedSongs = fetchedSongs
+        .map((song, index) => ({
+          id: index,
+          title: song.title,
+          caption: song.caption,
+          ipfsHash: song.ipfsHash,
+          owner: song.owner,
+          likes: Number(song.likes),
+        }))
+        .reverse(); // 🔄 Show most recent first
+
+      setSongs(formattedSongs);
+    } catch (error) {
+      console.error("Error fetching songs:", error);
+    }
+  }
+  fetchSongs();
+}, []);
+async function likeSong(songId) {
+  try {
+    const contract = await getContract();
+    if (!contract) return alert("Wallet not connected!");
+
+    const tx = await contract.likeSong(songId);
+    await tx.wait();
+
+    alert("Liked song successfully!");
+    setSongs((prevSongs) =>
+      prevSongs.map((song) =>
+        song.id === songId ? { ...song, likes: song.likes + 1 } : song
+      )
+    );
+  } catch (error) {
+    console.error("Error liking song:", error);
+    alert("Failed to like song.");
+  }
+}
   useEffect(() => {
     const address = localStorage.getItem("walletAddress");
     if (!address) navigate("/"); // Redirect if not connected
@@ -188,9 +363,23 @@ export default function Dashboard() {
 
         // 🔹 Upload to Blockchain
         try {
-            const tx = await contract.uploadSong(title, caption, metadataHash);
-            await tx.wait();
-            alert("Song uploaded to blockchain!");
+          const tx = await contract.uploadSong(title, caption, metadataHash);
+console.log("Transaction sent! Hash:", tx.hash);
+
+await tx.wait(); // Wait for confirmation
+const txDate = new Date().toLocaleString();
+generateCertificate({
+  title,
+  caption,
+  musicUrl: fileIpfsUrl,
+  owner: walletAddress
+}, tx.hash, Date.now());
+;
+
+console.log("Transaction confirmed:", tx.hash);
+
+alert(`Song uploaded to blockchain! \nTransaction ID: ${tx.hash}\n\nView on Etherscan: https://sepolia.etherscan.io/tx/${tx.hash}`);
+
         } catch (error) {
             console.error("Blockchain upload failed:", error);
             alert("Failed to upload song on blockchain. Check console for details.");
@@ -200,37 +389,71 @@ export default function Dashboard() {
         alert("Upload to Pinata failed. Please try again.");
     }
 }
+return (
+  <Container>
+    <TopBar>
+      {walletAddress && <UserID>{walletAddress}</UserID>}
+      <Button danger onClick={disconnectWallet}>Disconnect</Button>
+    </TopBar>
 
-  return (
-    <Container>
-      <TopBar>
-        {walletAddress && <UserID>{walletAddress}</UserID>}
-        <Button danger onClick={disconnectWallet}>Disconnect</Button>
-      </TopBar>
+    <h1>🎵 Dashboard</h1>
 
-      <h1>🎵 Dashboard</h1>
+    <MainContent>
+      {/* Left Side (Feed - 70%) */}
+      <Feed>
+        <h2>🎶 Music Feed</h2>
+        {songs.length === 0 ? (
+          <p>No songs uploaded yet.</p>
+        ) : (
+          songs.map((song) => (
+            <SongCard key={song.id}>
+              <SongInfo>
+                <h3>{song.title}</h3>
+                <p>{song.caption}</p>
+                <p>🎤 {song.owner.slice(0, 6)}...{song.owner.slice(-4)}</p>
+              </SongInfo>
+              <Controls>
+              {musicUrls[song.id] ? (
+  <audio controls src={musicUrls[song.id]} />
+) : (
+  <p>Loading audio...</p>
+)}
 
-      <UploadContainer>
-        <Input type="file" id="fileInput" accept="audio/mpeg" onChange={handleFileChange} />
-        <Label htmlFor="fileInput">Choose MP3 File</Label>
-        {selectedFile && <FileName>📁 {selectedFile.name}</FileName>}
+                <LikeButton onClick={() => likeSong(song.id)}>👍 {song.likes}</LikeButton>
+              </Controls>
+            </SongCard>
+          ))
+        )}
+      </Feed>
 
-        <TextInput
-          type="text"
-          placeholder="Enter title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
+      {/* Right Side (User Uploads - 30%) */}
+      <UserPanel>
+        <h2>📤 Your Uploads</h2>
+        <UploadContainer>
+          <Input type="file" id="fileInput" accept="audio/mpeg" onChange={handleFileChange} />
+          <Label htmlFor="fileInput">Choose MP3 File</Label>
+          {selectedFile && <FileName>📁 {selectedFile.name}</FileName>}
 
-        <TextInput
-          type="text"
-          placeholder="Enter caption"
-          value={caption}
-          onChange={(e) => setCaption(e.target.value)}
-        />
+          <TextInput
+            type="text"
+            placeholder="Enter title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
 
-        <Button onClick={uploadToPinata}>Upload</Button>
-      </UploadContainer>
-    </Container>
-  );
+          <TextInput
+            type="text"
+            placeholder="Enter caption"
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+          />
+
+          <Button onClick={uploadToPinata}>Upload</Button>
+        </UploadContainer>
+      </UserPanel>
+    </MainContent>
+  </Container>
+);
+
+
 }
